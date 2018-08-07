@@ -6,6 +6,24 @@ def incoming_call_list(number):
 	f = open ('call_list_queue','a+')
 	if (number+'\n') not in f.readlines():
 		f.write(number+'\n')
+	f.flush()
+	f.close()
+
+def get_number():
+	f = open ('call_list_queue','r')
+	number = f.readline().replace('\n','')
+	f.close()
+	return number
+
+def update_call_list(number):
+	f = open ('call_list_queue','r+w')
+	call_list = f.readlines()
+	#print call_list
+	call_list.remove(number+'\n')
+	print 'Call list now: ', call_list
+	f.truncate(0)
+	f.write(''.join(call_list))
+	f.flush()
 	f.close()
 
 class gsm(object):
@@ -24,14 +42,20 @@ class gsm(object):
 		self.dtmf_value = 0
 		self.on_hook = 0
 		self.incoming_call_alert = 0
-		self.call_log = 0
+		f = open ('call_list_queue','r')
+		numbers = f.readlines()
+		f.close()		
+		self.call_log = len(numbers)
+
+	def __del__(self):
+		self.usb.write('ATH\n')
 
 	def readusb(self):
 		return self.usb.readline().replace('\r\n','')
 
 	def readline(self):
 		line = self.readusb()
-		#if line: print line
+		if line: print line
 		if line == 'RING' and not self.incoming_call:
 			self.incoming_call = 1
 			line = self.readusb()
@@ -78,10 +102,27 @@ class gsm(object):
 	def dtmf_on(self):
 		self.usb.write('AT+DDET=1\n')
 		if self.isOK():
-			return 'DTMF Detection Enabled'
+			#return 'DTMF Detection Enabled'
 			self.dtmf_status = 1
+			return 1
 		else:
-			return 'DTMF Detection Enabling Failed. Check SIM Card'
+			#return 'DTMF Detection Enabling Failed. Check SIM Card'
+			return 0
+
+	def dtmf_off(self):
+		self.usb.write('AT+DDET=0\n')
+		if self.isOK():
+			return 1
+			self.dtmf_status = 0
+		else:
+			return 0
+	
+	def clip_on(self):
+		self.usb.write('AT+CLIP=1\n')
+		if self.isOK():
+			return 'CLIP Enabled'
+		else:
+			return 'CLIP Enabling Failed'
 	
 	def end_call(self):
 		self.usb.write('ATH\n')
@@ -117,10 +158,11 @@ class gsm(object):
 
 
 	def readDTMF(self):
+		#self.dtmf_on()
 		line = self.readline()
-		if line: #to ignore multiple key press
-			self.clearDTMF()
 		if 'DTMF' in line:
+			self.clearDTMF()		#to ignore multiple key press
+			#self.dtmf_off()
 			return line.split(':')[1].replace(' ','')
 		return ''
 
