@@ -336,7 +336,9 @@ if __name__ == '__main__':
 		# Keep reading the serial port to check for incoming call
 		try:
 			mygsm.readline()
-		except: pass
+		except Exception as error: 
+			print error 
+			pass
 		
 		# if there was an incoming call logged
 		if mygsm.call_log:

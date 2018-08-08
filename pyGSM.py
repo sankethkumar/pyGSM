@@ -2,21 +2,24 @@ import glob
 import serial
 import os
 
+projectpath =  os.path.split(os.path.realpath(__file__))[0]
+incoming_call_log = projectpath + '/call_list_queue'
+
 def incoming_call_list(number):
-	f = open ('call_list_queue','a+')
+	f = open (incoming_call_log,'a+')
 	if (number+'\n') not in f.readlines():
 		f.write(number+'\n')
 	f.flush()
 	f.close()
 
 def get_number():
-	f = open ('call_list_queue','r')
+	f = open (incoming_call_log,'r')
 	number = f.readline().replace('\n','')
 	f.close()
 	return number
 
 def update_call_list(number):
-	f = open ('call_list_queue','r+w')
+	f = open (incoming_call_log,'r+w')
 	call_list = f.readlines()
 	#print call_list
 	call_list.remove(number+'\n')
@@ -59,10 +62,9 @@ class gsm(object):
 		if line == 'RING' and not self.incoming_call:
 			self.incoming_call = 1
 			line = self.readusb()
+			while not 'CLIP' in line: line = self.readusb()
+			incoming_call_list(line.split(',')[0].split('"')[1])
 			line = self.readusb()
-			if 'CLIP' in line: 
-				incoming_call_list(line.split(',')[0].split('"')[1])
-				line = self.readusb()
 		if self.incoming_call:
 			if line == 'NO CARRIER':
 				self.incoming_call = 0
@@ -71,6 +73,7 @@ class gsm(object):
 		elif line == 'NO CARRIER':
 			self.on_hook = 0
 			raise Exception("Call Terminated")
+		elif line == '+CPIN: NOT READY': raise Exception("SIM Card Not Inserted Properly")
 		elif line == '+CFUN: 1': raise Exception("Call Terminated")
 		return line
 
