@@ -312,7 +312,7 @@ def execute_ivr(record, start_level):
 					f.write(phone_number)
 		
 		# iterate to next level
-		if next_level < now_level: zero_cnt += 1		
+		if next_level < now_level and not now_level==26: zero_cnt += 1		
 		else: zero_cnt = 0
 		if zero_cnt > 1: now_level = 6
 		else: now_level = next_level
@@ -323,6 +323,7 @@ if __name__ == '__main__':
 	print mygsm.echo_off()
 	#print 'DTMF ON: ',mygsm.dtmf_on()
 	print mygsm.clip_on()
+	print mygsm.callwait_on()
 	print mygsm.outgoing_call_status_on()
 	
 	# Get the flow sequence of the ivr
@@ -339,7 +340,9 @@ if __name__ == '__main__':
 		
 		# if there was an incoming call logged
 		if mygsm.call_log:
+			
 			phone_number = pyGSM.get_number() 	
+			if not phone_number: continue
 			record = fetch_record(phone_number)
 			
 			# if a record for the phone number already exists
@@ -366,13 +369,18 @@ if __name__ == '__main__':
 			if 'Established' in status:
 				print status
 				pyGSM.update_call_list(phone_number)
-				execute_ivr(record,from_level)
 				mygsm.call_log -= 1
+				execute_ivr(record,from_level)
 			# if the call is not picked up, still remove from the list 
 			elif 'Not Answered' in status:
 				print status
 				pyGSM.update_call_list(phone_number)
 				mygsm.call_log -= 1
+
+			else:
+				print status
+				status = mygsm.end_call()
+				while not 'Terminated' in status: pass
 
 	#while True:
 	#	phone_number = raw_input('Enter number: ')

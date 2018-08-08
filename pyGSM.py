@@ -123,6 +123,13 @@ class gsm(object):
 			return 'CLIP Enabled'
 		else:
 			return 'CLIP Enabling Failed'
+
+	def callwait_on(self):
+		self.usb.write('AT+CCWA=1\n')
+		if self.isOK():
+			return 'Call Waiting Enabled'
+		else:
+			return 'Call Waiting Enabling Failed'
 	
 	def end_call(self):
 		self.usb.write('ATH\n')
