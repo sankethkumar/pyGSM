@@ -380,12 +380,10 @@ if __name__ == '__main__':
 			if 'Busy' in status: continue
 			elif 'Established' in status:
 				pyGSM.update_call_list(phone_number)
-				mygsm.call_log -= 1
 				execute_ivr(record,from_level)
 			# if the call is not picked up, still remove from the list 
 			elif 'Not Answered' in status:
 				pyGSM.update_call_list(phone_number)
-				mygsm.call_log -= 1
 			else:
 				print 'Hanging Up: ', mygsm.disconnect_call()
 				
