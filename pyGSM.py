@@ -1,6 +1,8 @@
 import glob
 import serial
 import os
+import signal
+import time
 
 projectpath =  os.path.split(os.path.realpath(__file__))[0]
 incoming_call_log = projectpath + '/call_list_queue'
@@ -29,6 +31,7 @@ def update_call_list(number):
 	f.flush()
 	f.close()
 
+
 class gsm(object):
 	def __init__(self):
 		ports = glob.glob('/dev/ttyUSB[0-9]*')
@@ -39,12 +42,9 @@ class gsm(object):
 			raw_input()
 			exit()
 
-		self.incoming_call = 0
-		self.outgoing_call = 0
-		self.dtmf_status = 0
-		self.dtmf_value = 0
-		self.on_hook = 0
-		self.incoming_call_alert = 0
+		
+		self.call_state = '6' # Call Disconnect State
+		
 		f = open ('call_list_queue','r')
 		numbers = f.readlines()
 		f.close()		
@@ -56,109 +56,174 @@ class gsm(object):
 	def readusb(self):
 		return self.usb.readline().replace('\r\n','')
 
-	def readline(self):
-		line = self.readusb()
-		if line: print line
-		if line == 'RING' and not self.incoming_call:
-			self.incoming_call = 1
-			line = self.readusb()
-			while not 'CLIP' in line: line = self.readusb()
-			incoming_call_list(line.split(',')[0].split('"')[1])
-			line = self.readusb()
-		if self.incoming_call:
-			if line == 'NO CARRIER':
-				self.incoming_call = 0
-				self.call_log += 1
-			return ''
-		elif line == 'NO CARRIER':
-			self.on_hook = 0
-			raise Exception("Call Terminated")
-		elif line == '+CPIN: NOT READY': raise Exception("SIM Card Not Inserted Properly")
-		elif line == '+CFUN: 1': raise Exception("Call Terminated")
-		return line
-
 	def isOK(self):
 		while True:
-			line = self.readusb()		
-			if line:
-				if 'OK' in line: return True
-				else: return False
+			try:
+				line = self.readline()		
+				if line:
+					if 'OK' in line: return True
+					elif 'ERROR' in line: return False
+			except Exception as error:
+				print 'Runtime error is: ', error
+				return False
 
-	#def isRinging(self):
-	#	try:		
-	#		line = self.readline()
-	#	except Exception as error:
-	#		print error
-	#		if error == 'Ringing': return True
-	#	return False
+	def command_echo(self, state): 
+		if state == 'OFF':
+			self.usb.write('ATE0\n')
+		elif state == 'ON':
+			self.usb.write('ATE1\n')
+		else: raise ValueError
 
+		if self.isOK(): return True				
+		else: return False
 
-	def echo_off(self): 
-		self.usb.write('ATE0')
-		while self.usb.read():	pass
-		self.usb.write('\n')
-		if self.isOK():
-			return 'Echo OFF Success'
+	def phone_functionality(self, state):
+		if state == 'OFF':
+			self.usb.write('AT+CFUN=0\n')
+			if self.isOK(): return True				
+			else: return False
 		else:
-			return 'Echo OFF Fail'
-
-	def dtmf_on(self):
-		self.usb.write('AT+DDET=1\n')
-		if self.isOK():
-			#return 'DTMF Detection Enabled'
-			self.dtmf_status = 1
-			return 1
-		else:
-			#return 'DTMF Detection Enabling Failed. Check SIM Card'
-			return 0
-
-	def dtmf_off(self):
-		self.usb.write('AT+DDET=0\n')
-		if self.isOK():
-			return 1
-			self.dtmf_status = 0
-		else:
-			return 0
+			if state == 'ON': self.usb.write('AT+CFUN=1\n')
+			elif state == 'RESTART': self.usb.write('AT+CFUN=1,1\n')
+			else: raise ValueError
+			while not self.call_ready(): time.sleep(2)
+			return True
 	
-	def clip_on(self):
-		self.usb.write('AT+CLIP=1\n')
-		if self.isOK():
-			return 'CLIP Enabled'
-		else:
-			return 'CLIP Enabling Failed'
+	def call_ready(self):
+		self.usb.write('AT+CCALR?\n')
+		line = self.readline()
+		while not (('OK' in line) or ('ERROR' in line)):
+			print 'Why index: ',line
+			if '+CCALR' in line:
+				return bool(line.split(':')[1].replace(' ',''))
+			line = self.readline()
+				
+	def current_calls_report(self, state):
+		if state == 'OFF':
+			self.usb.write('AT+CLCC=0\n')
+		elif state == 'ON':
+			self.usb.write('AT+CLCC=1\n')
+		else: raise ValueError
 
-	def callwait_on(self):
-		self.usb.write('AT+CCWA=1\n')
-		if self.isOK():
-			return 'Call Waiting Enabled'
+		if self.isOK(): return True				
+		else: return False
+
+	def check_current_calls(self):
+		self.usb.write('AT+CLCC\n')
+		line = self.readline()
+		while not (('OK' in line) or ('ERROR' in line)):
+			if '+CLCC' in line: return True
+			line = self.readline()
+		return False
+		
+	def parse_current_calls(self, line):
+		line = line.split(':')[1]
+		line = line.split(',')
+		#self.call_id = line[0]
+		self.call_direction = line[1]
+		self.call_state = line[2]
+		self.call_number = line[5].replace('"','')		
+
+					
+	def modem_connect(self):
+		def gsm_connect_wait(signum, frame):
+			raise Exception	
+
+		signal.signal(signal.SIGALRM, gsm_connect_wait)
+
+		signal.alarm(3)
+		try:
+			temp = ''
+			while not temp: 
+				self.usb.write('AT\n')				
+				temp = self.readusb()
+		except: 
+			print 'Please connect GSM modem'
+			return False
+		signal.alarm(0)
+		return True
+
+	def readline(self):
+		line = self.readusb()
+		if line: 
+			if '+CLCC' in line: 
+				self.parse_current_calls(line)
+				if self.call_direction == '1':
+					if not self.call_state == '6':
+						incoming_call_list(self.call_number)	
+				if self.call_direction == '0':
+					if self.call_state == '6': raise Exception ("Call Terminated")
+			elif line == '+CPIN: NOT READY': 
+				print 'Modem restart: ', self.phone_funtionality('RESTART')
+				raise Exception("SIM Card Not Inserted Properly")
+			elif line == '+CFUN: 1': 
+				raise Exception("Call Terminated, modem restarted")
+			#print line
+			return line	
+		return ''
+
+	def dial_number(self,number):
+		if self.check_current_calls(): return 'Busy'
 		else:
-			return 'Call Waiting Enabling Failed'
+			self.usb.write('ATD'+number+';\n')
+			if self.isOK():
+				try: 
+					line = self.readline()
+					while not line == 'MO CONNECTED': 
+						line = self.readline()
+					return 'Call Established'
+				except Exception as error: 
+					print 'Error: ', error
+					return 'Call Not Answered'
+			return 'Dialing Failed'
+
+	def dtmf_detection(self, state, interval = '1000'):
+		if state == 'OFF':
+			self.usb.write('AT+DDET=0\n')
+		elif state == 'ON':
+			self.usb.write('AT+DDET=1,'+interval+'\n')
+		else: raise ValueError
+
+		if self.isOK(): return True				
+		else: return False
+
+	def clip(self, state):
+		if state == 'OFF':
+			self.usb.write('AT+CLIP=0\n')
+		elif state == 'ON':
+			self.usb.write('AT+CLIP=1\n')
+		else: raise ValueError
+
+		if self.isOK(): return True				
+		else: return False
+
+	def call_wait_control(self, state, report='0'):
+		if state == 'OFF':
+			self.usb.write('AT+CCWA='+report+',0\n')
+		elif state == 'ON':
+			self.usb.write('AT+CCWA='+report+',1\n')
+		else: raise ValueError
+
+		if self.isOK(): return True				
+		else: return False
 	
-	def end_call(self):
+	def disconnect_call(self):
 		self.usb.write('ATH\n')
-		self.on_hook = 0
-		if self.isOK():
-			self.on_hook = 0
-			return 'Call Terminated'			
-		else:
-			return 'Something wrong with call termination '
+		if self.isOK(): return True				
+		else: return False
 
-	def outgoing_call_status_on(self):
-		self.usb.write('AT+MORING=1\n')
-		if self.isOK():
-			return 'Outgoing Call Status Identification Enabled'
-		else:
-			return 'Outgoing Call Status Identification Failed'
+	def outgoing_call_status(self, state):
+		if state == 'OFF':
+			self.usb.write('AT+MORING=0\n')
+		elif state == 'ON':
+			self.usb.write('AT+MORING=1\n')
+		else: raise ValueError
 
-	#def readcallerID(self):
-	#	line = self.readline()		
-	#	if self.incoming_call and not self.on_hook:		
-	#		while 'CLIP' not in line:
-	#			line = self.readline()
-	#		return line.split(',')[0].split('"')[1]
-	#	return 'No Incoming Call'
+		if self.isOK(): return True				
+		else: return False
 
-	def clearDTMF(self):
+
+	def clear_dtmf(self):
 		i = 0
 		while i<5:
 			x=self.readline()
@@ -167,65 +232,25 @@ class gsm(object):
 			else: i = 0
 
 
-	def readDTMF(self):
-		#self.dtmf_on()
+	def read_dtmf(self):
 		line = self.readline()
 		if 'DTMF' in line:
-			self.clearDTMF()		#to ignore multiple key press
-			#self.dtmf_off()
+			self.clear_dtmf()		#to ignore multiple key press
 			return line.split(':')[1].replace(' ','')
 		return ''
 
-	def callnumber(self,number):
-		if self.on_hook:
-			return 'Call in progress'
-		elif self.incoming_call: 
-			return 'Incoming call...'
-		else:
-			self.usb.write('ATD'+number+';\n')
-			if self.isOK():
-				try: 
-					line = self.readline()
-					while not line == 'MO CONNECTED': 
-						line = self.readline()
-					self.on_hook = 1
-					return 'Call Established'
-				except Exception: return 'Call Not Answered'
-			return 'Calling Failed!'
-	
-	#def outgoing_call_status(self):
-	#	line = self.readline()
-	#	if self.outgoing_call:
-	#		if line == 'MO RING':
-	#			return 'Ringing...'
-	#		elif line == 'MO CONNECTED':
-	#			self.on_hook = 1
-	#			return 'Hello!'
-	#		elif line == 'NO CARRIER'and not self.incoming_call:
-	#			self.on_hook = 0
-	#			self.outgoing_call = 0
-	#			return 'Call Terminated'
-	#		else:
-	#			return ''
-	#	return 'Call Not Initiated'
-
-	#def get_DTMF(self):
-	#	if self.on_hook:
-	#		line = self.readline()
-	#		self.usb.reset_input_buffer()
-	#		if not line: return line
-	#		else:
-	#			if 'DTMF' in line: return line.split(':')[1]
-	#			elif 'NO CARRIER' in line: 
-	#				self.on_hook = 0
-	#				self.outgoing_call = 0
-	#				return 'STOP'
-	#	return ''
 		
 
 if __name__ == '__main__':
 
 	mygsm = gsm()
+	while not mygsm.modem_connect(): pass
+	print 'Echo OFF: ', mygsm.command_echo('OFF')
+	print 'Phone ON: ', mygsm.phone_functionality('ON')
+	print 'Alert on change in call status: ', mygsm.current_calls_report('ON')
+	
+	
+'''
 	print mygsm.echo_off()
 	print mygsm.dtmf_on()
 	print mygsm.outgoing_call_status_on()
@@ -243,4 +268,4 @@ if __name__ == '__main__':
 				except Exception as error: 
 					print 'Exception', error					
 					break
-		
+'''		

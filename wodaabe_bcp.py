@@ -172,7 +172,7 @@ def fetch_dtmf(levl):
 	try:
 		dtmf = ''			
 		signal.alarm(timeout[levl])				
-		while not dtmf: dtmf = mygsm.readDTMF() 
+		while not dtmf: dtmf = mygsm.read_dtmf() 
 		#raw_input('Enter choice: ')
 	# Error can be Timeout or Call Disconnect
 	except Exception as error:
@@ -204,7 +204,8 @@ def execute_ivr(record, start_level):
 	now_level = 0
 	
 	# Treat user as new user if training not completed the first time
-	if start_level < 7:	start_level = 0
+	if start_level < 6:	start_level = 0
+ 	elif start_level == 6: 	start_level = 7
 	# To go to next level after intentional break, when call is resumed
 	elif start_level == 34: start_level += 1
 	# If call is disconnected when going through clan list, then resume @
@@ -218,7 +219,7 @@ def execute_ivr(record, start_level):
 	while True:
 		# Terminate the call when level 40 is reached
 		if now_level == 40: 
-			print mygsm.end_call()
+			print mygsm.disconnect_call()
 			return
 		
 		# Play the audio file of the current level 
@@ -226,9 +227,10 @@ def execute_ivr(record, start_level):
 
 		# Turn on DTMF to read the input and then turn it off to avoid stray
 		#  button press
-		mygsm.dtmf_on()		
-		dtmf = fetch_dtmf(now_level)
-		mygsm.dtmf_off()
+		if mygsm.dtmf_detection('ON'):
+			dtmf = fetch_dtmf(now_level)
+			mygsm.dtmf_detection('OFF')
+		else: dtmf = 'exit'
 		print 'DTMF is ', dtmf
 
 		# Prepare next action based on DTMF value
@@ -320,11 +322,16 @@ def execute_ivr(record, start_level):
 
 if __name__ == '__main__':
 
-	print mygsm.echo_off()
-	#print 'DTMF ON: ',mygsm.dtmf_on()
-	print mygsm.clip_on()
-	print mygsm.callwait_on()
-	print mygsm.outgoing_call_status_on()
+	mygsm = pyGSM.gsm()
+	while not mygsm.modem_connect(): pass
+	print 'Echo OFF: ', mygsm.command_echo('OFF')
+	print 'Phone ON: ', mygsm.phone_functionality('ON')
+	print 'Alert on change in call status: ', mygsm.current_calls_report('ON')
+	print 'Caller ID disabled during incoming call: ', mygsm.clip('OFF')
+	print 'Call Waiting enabled: ', mygsm.call_wait_control('ON')
+	print 'Outgoing call status indication: ',mygsm.outgoing_call_status('ON')
+
+
 	
 	# Get the flow sequence of the ivr
 	prepare_ivr_flow()
@@ -341,10 +348,11 @@ if __name__ == '__main__':
 			pass
 		
 		# if there was an incoming call logged
-		if mygsm.call_log:
+		if mygsm.call_state == '6':
 			
 			phone_number = pyGSM.get_number() 	
 			if not phone_number: continue
+			print 'Here 1', phone_number
 			record = fetch_record(phone_number)
 			
 			# if a record for the phone number already exists
@@ -366,23 +374,22 @@ if __name__ == '__main__':
 				create_record(record)
 		
 			# call the number
-			status = mygsm.callnumber(phone_number)
+			status = mygsm.dial_number(phone_number)
+			print status
 			# if call gets picked up, execute ivr and remove number from list
-			if 'Established' in status:
-				print status
+			if 'Busy' in status: continue
+			elif 'Established' in status:
 				pyGSM.update_call_list(phone_number)
 				mygsm.call_log -= 1
 				execute_ivr(record,from_level)
 			# if the call is not picked up, still remove from the list 
 			elif 'Not Answered' in status:
-				print status
 				pyGSM.update_call_list(phone_number)
 				mygsm.call_log -= 1
-
 			else:
-				print status
-				status = mygsm.end_call()
-				while not 'Terminated' in status: pass
+				print 'Hanging Up: ', mygsm.disconnect_call()
+				
+				
 
 	#while True:
 	#	phone_number = raw_input('Enter number: ')
