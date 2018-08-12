@@ -42,13 +42,8 @@ class gsm(object):
 			raw_input()
 			exit()
 
-		
 		self.call_state = '6' # Call Disconnect State
 		
-		f = open ('call_list_queue','r')
-		numbers = f.readlines()
-		f.close()		
-		self.call_log = len(numbers)
 
 	def __del__(self):
 		self.usb.write('ATH\n')
