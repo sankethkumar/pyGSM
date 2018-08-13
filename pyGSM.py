@@ -1,11 +1,13 @@
-import glob
-import serial
+import serial_port
 import os
 import signal
 import time
+import commands
 
 projectpath =  os.path.split(os.path.realpath(__file__))[0]
-incoming_call_log = projectpath + '/call_list_queue'
+incoming_call_log = projectpath + '/bcp_output/debug/' + 'call_list_queue'
+
+terminal_soft = commands.getoutput('echo $TERM')
 
 def incoming_call_list(number):
 	f = open (incoming_call_log,'a+')
@@ -34,22 +36,19 @@ def update_call_list(number):
 
 class gsm(object):
 	def __init__(self):
-		ports = glob.glob('/dev/ttyUSB[0-9]*')
-		if ports:
-			self.usb = serial.Serial(ports[0],timeout=0.1)
-		else:
-			print 'Device Not Connected'
-			raw_input()
-			exit()
+		os.system(terminal_soft + " -e 'bash -c \"python /home/sanketh/Documents/janastu/ivr/pyGSM/serial_port.py; bash\" ' &")
+		time.sleep(1)
+		self.usb = serial_port.port()
 
 		self.call_state = '6' # Call Disconnect State
 		
 
 	def __del__(self):
-		self.usb.write('ATH\n')
+		self.disconnect_call()
+		os.system("killall xterm")
 
 	def readusb(self):
-		return self.usb.readline().replace('\r\n','')
+		return self.usb.readline().replace('\n','').replace('\r','')
 
 	def isOK(self):
 		while True:
@@ -73,25 +72,28 @@ class gsm(object):
 		else: return False
 
 	def phone_functionality(self, state):
-		if state == 'OFF':
-			self.usb.write('AT+CFUN=0\n')
-			if self.isOK(): return True				
-			else: return False
-		else:
-			if state == 'ON': self.usb.write('AT+CFUN=1\n')
-			elif state == 'RESTART': self.usb.write('AT+CFUN=1,1\n')
-			else: raise ValueError
-			while not self.call_ready(): time.sleep(2)
+		if state == 'OFF': self.usb.write('AT+CFUN=0\n')
+		elif state == 'ON': self.usb.write('AT+CFUN=1\n')
+		elif state == 'RESTART': 
+			self.usb.write('AT+CFUN=1,1\n')
+			while not 'Call Ready' in self.readline(): pass
+			self.command_echo('OFF')
 			return True
+		else: raise ValueError
+
+		if self.isOK():	return True
+		else: return False
 	
 	def call_ready(self):
-		self.usb.write('AT+CCALR?\n')
+		temp = False
+		self.usb.write('at+ccalr?\n')
 		line = self.readline()
-		while not (('OK' in line) or ('ERROR' in line)):
-			print 'Why index: ',line
-			if '+CCALR' in line:
-				return bool(line.split(':')[1].replace(' ',''))
+		while not 'OK' in line:
+			if '+CCALR:' in line:
+				temp = bool(int(line.split(':')[1].replace(' ','')))
 			line = self.readline()
+		#print 'Call Ready: ', temp
+		return temp
 				
 	def current_calls_report(self, state):
 		if state == 'OFF':
@@ -104,12 +106,13 @@ class gsm(object):
 		else: return False
 
 	def check_current_calls(self):
+		temp = False		
 		self.usb.write('AT+CLCC\n')
 		line = self.readline()
 		while not (('OK' in line) or ('ERROR' in line)):
-			if '+CLCC' in line: return True
+			if '+CLCC:' in line: temp = True
 			line = self.readline()
-		return False
+		return temp
 		
 	def parse_current_calls(self, line):
 		line = line.split(':')[1]
@@ -129,9 +132,9 @@ class gsm(object):
 		signal.alarm(3)
 		try:
 			temp = ''
-			while not temp: 
-				self.usb.write('AT\n')				
-				temp = self.readusb()
+			self.usb.write('at\n')
+			temp = self.readusb()
+			while not temp: temp = self.readusb()
 		except: 
 			print 'Please connect GSM modem'
 			return False
@@ -141,18 +144,18 @@ class gsm(object):
 	def readline(self):
 		line = self.readusb()
 		if line: 
-			if '+CLCC' in line: 
+			if '+CLCC:' in line: 
 				self.parse_current_calls(line)
 				if self.call_direction == '1':
 					if not self.call_state == '6':
 						incoming_call_list(self.call_number)	
 				if self.call_direction == '0':
 					if self.call_state == '6': raise Exception ("Call Terminated")
-			elif line == '+CPIN: NOT READY': 
-				print 'Modem restart: ', self.phone_funtionality('RESTART')
+			elif '+CPIN: NOT READY' in line: 
+				print 'Modem restart: ', self.phone_functionality('RESTART')
 				raise Exception("SIM Card Not Inserted Properly")
-			elif line == '+CFUN: 1': 
-				raise Exception("Call Terminated, modem restarted")
+			#elif '+CFUN: 1' in line: 
+			#	raise Exception("Call Terminated, modem restarted")
 			#print line
 			return line	
 		return ''
@@ -164,7 +167,7 @@ class gsm(object):
 			if self.isOK():
 				try: 
 					line = self.readline()
-					while not line == 'MO CONNECTED': 
+					while not (self.call_direction == '0' and self.call_state == '0'): 
 						line = self.readline()
 					return 'Call Established'
 				except Exception as error: 
@@ -229,7 +232,7 @@ class gsm(object):
 
 	def read_dtmf(self):
 		line = self.readline()
-		if 'DTMF' in line:
+		if '+DTMF:' in line:
 			self.clear_dtmf()		#to ignore multiple key press
 			return line.split(':')[1].replace(' ','')
 		return ''
@@ -239,10 +242,13 @@ class gsm(object):
 if __name__ == '__main__':
 
 	mygsm = gsm()
-	while not mygsm.modem_connect(): pass
+	while not mygsm.modem_connect(): time.sleep(3)
+	#if not mygsm.call_ready(): mygsm.phone_functionality('RESTART')
 	print 'Echo OFF: ', mygsm.command_echo('OFF')
-	print 'Phone ON: ', mygsm.phone_functionality('ON')
+	#print 'Phone ON: ', mygsm.phone_functionality('ON')
+
 	print 'Alert on change in call status: ', mygsm.current_calls_report('ON')
+	raw_input()
 	
 	
 '''

@@ -1,6 +1,7 @@
 import pyGSM		# for interfacing with GSM modem
 import os			# for playing the wav files
 import signal		# for the alarm to implement tiemout
+import time
 #import commands		# for reading DTMF while the audio is playing
 
 ''' Global IVR Variables '''
@@ -16,9 +17,9 @@ projectpath =  os.path.split(os.path.realpath(__file__))[0]
 audiopath = projectpath + "/audios/"
 
 ''' Files used '''
-ivr_flow_file = projectpath + '/' + 'wodaabe_bcp_skeleton.csv'
-calls_progress_record = projectpath + '/'+ 'call_log.csv'
-no_clan_list = projectpath + '/' + 'Caller Clan Not Listed.txt'
+ivr_flow_file = projectpath + '/docs/' + 'wodaabe_bcp_skeleton.csv'
+calls_progress_record = projectpath + '/bcp_output/'+ 'call_log.csv'
+no_clan_list = projectpath + '/bcp_output/' + 'clan_not_listed.txt'
 
 ''' Creating a GSM object '''
 mygsm = pyGSM.gsm()
@@ -189,8 +190,8 @@ def fetch_dtmf(levl):
 	# Check whether the entered DTMF is listed in valid inputs for that level
 	try:
 		print 'Level is ', levl
-		print 'Valid inputrs are: ', fetch_valid_input(levl)
-		fetch_valid_input(levl).index(dtmf)
+		print 'Valid inputs are: ', fetch_valid_input(levl)
+		print 'Validity: ', fetch_valid_input(levl).index(str(dtmf))
 	except: dtmf = 'invalid'
 	return dtmf
 
@@ -322,14 +323,17 @@ def execute_ivr(record, start_level):
 
 if __name__ == '__main__':
 
-	mygsm = pyGSM.gsm()
-	while not mygsm.modem_connect(): pass
+	while not mygsm.modem_connect(): time.sleep(3)
 	print 'Echo OFF: ', mygsm.command_echo('OFF')
-	print 'Phone ON: ', mygsm.phone_functionality('ON')
+	#print 'Phone ON: ', mygsm.phone_functionality('ON')
+	chk = mygsm.call_ready()
+	print 'Call Ready: ', chk
+	if not chk: 
+		mygsm.phone_functionality('RESTART')
 	print 'Alert on change in call status: ', mygsm.current_calls_report('ON')
 	print 'Caller ID disabled during incoming call: ', mygsm.clip('OFF')
 	print 'Call Waiting enabled: ', mygsm.call_wait_control('ON')
-	print 'Outgoing call status indication: ',mygsm.outgoing_call_status('ON')
+	print 'Outgoing call status indication: ', mygsm.outgoing_call_status('OFF')
 
 
 	
