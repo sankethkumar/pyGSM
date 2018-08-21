@@ -1,9 +1,9 @@
 ''' The PyGSM Library '''
-import serial_port		### serial port sniffer with class
+import serial_port	### serial port sniffer with class
 import os
 import signal
 import time
-import commands			### to get output of a bash command
+import commands		  ### to get output of a bash command
 import subprocess		### to open serial port
 
 ### Get location of call list queue file 
@@ -47,7 +47,7 @@ class gsm(object):
 
 		### if debug mode, open terminal and display commands sent
 		if args == 'debug':
-			self.serpid = subprocess.Popen([terminal_soft, '-e', 'python', projectpath+'/serial_port.py'])
+			self.serpid = subprocess.Popen(['lxterminal', '-e', 'python', projectpath+'/serial_port.py'])
 		else:
 			self.serpid = subprocess.Popen(['python', projectpath+'/serial_port.py'])
 		
@@ -217,8 +217,9 @@ class gsm(object):
 			if '+CLCC:' in line: 
 				self.parse_current_calls(line)
 				if self.call_direction == '1':
-					if not self.call_state == '6':
-						incoming_call_list(self.call_number)	
+                                        if not self.call_state == '6' and self.call_number:
+						incoming_call_list(self.call_number)
+						print 'Incoming Call from: ', self.call_number
 				if self.call_direction == '0':
 					if self.call_state == '6': raise Exception ("Call Terminated")
 			elif '+CPIN: NOT READY' in line: 
@@ -235,6 +236,7 @@ class gsm(object):
 		Also monitor status of the dialed call
 	'''
 	def dial_number(self,number):
+                ring = 0
 		if self.check_current_calls(): return 'Busy'
 		else:
 			self.usb.write('ATD'+number+';\n')
@@ -243,10 +245,12 @@ class gsm(object):
 					line = self.readline()
 					while not (self.call_direction == '0' and self.call_state == '0'): 
 						line = self.readline()
+                                                if self.call_state == '3': ring = 1
 					return 'Call Established'
 				except Exception as error: 
-					print 'Error: ', error
-					return 'Call Not Answered'
+					print 'Alert: ', error
+                                        if ring: return 'Call Not Answered'
+                                        return 'Call Connection Failed'
 			return 'Dialing Failed'
 
 	''' 

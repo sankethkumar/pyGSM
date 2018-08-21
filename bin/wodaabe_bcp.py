@@ -29,7 +29,7 @@ def timeout_handler(signum, frame):
 	raise Exception('Timeout')
 	
 ''' 
-	Prepare the flow sequence of IVR using a CSV file "ivr_flow_file"
+    Prepare the flow sequence of IVR using a CSV file "ivr_flow_file"
     This function parses through CSV file and creates a linked list of sorts
     for the call to navigate and execute the desire flow sequence. 
 '''
@@ -325,7 +325,8 @@ def execute_ivr(record, start_level):
 					f.write(phone_number)
 		
 		### iterate to next level
-		if next_level < now_level and not now_level==26: zero_cnt += 1		
+		if next_level < now_level and not now_level==26: zero_cnt += 1
+		elif next_level == now_level and now_level == 7: zero_cnt += 1
 		else: zero_cnt = 0
 		if zero_cnt > 1: now_level = 6
 		else: now_level = next_level

@@ -17,7 +17,7 @@ do
 
 	### Execute the relavent script
 	sleep 5
-	python /home/sanketh/Documents/janastu/ivr/pyGSM/bin/wodaabe_bcp.py &
+	python /home/pi/Documents/pyGSM/bin/wodaabe_bcp.py &
 	#sleep 5
 	#/usr/bin/python /home/sanketh/Documents/janastu/ivr/pyGSM/serial_port.py
 
