@@ -1,5 +1,8 @@
 #!/bin/bash
 
+### Command to get directory of this script
+dir=$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )
+
 ### Command to get the USB Serial port
 x=$(ls /dev/ | grep ttyUSB*)
 
@@ -17,9 +20,7 @@ do
 
 	### Execute the relavent script
 	sleep 5
-	python /home/pi/Documents/pyGSM/bin/wodaabe_bcp.py &
-	#sleep 5
-	#/usr/bin/python /home/sanketh/Documents/janastu/ivr/pyGSM/serial_port.py
+	python $dir/bin/wodaabe_bcp.py &
 
 	### Wait for disconnection of USB Serial Port	 
 	while [ ! -z ${x} ] 
